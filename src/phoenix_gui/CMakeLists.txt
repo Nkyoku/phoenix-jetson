@@ -8,7 +8,7 @@ endif()
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -38,6 +38,7 @@ ament_auto_add_executable(gui
   src/image_viewer.cpp
   src/gamepad_thread.cpp
   src/controller.cpp
+  src/parameter_editor.cpp
   src/cintelhex/ihex_copy.c
   src/cintelhex/ihex_parse.c
   src/cintelhex/ihex_record.c
@@ -46,6 +47,9 @@ target_link_libraries(gui
   Qt5::Widgets
   Qt5::OpenGL
   ${OPENGL_LIBRARIES}
+)
+target_compile_definitions(gui
+  PUBLIC _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 )
 
 if(BUILD_TESTING)

@@ -14,6 +14,10 @@
 #include <chrono>
 #include <random>
 
+using namespace std::chrono_literals;
+
+constexpr auto SERVICE_TIMEOUT = 1s;
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // UIを生成する
     _Ui = new Ui_MainWindow;
@@ -258,7 +262,7 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // NiosII書き換えサービスを見つける
     _Clients.program_nios = _NodeThread->node()->create_client<phoenix_msgs::srv::ProgramNios>(prefix + phoenix::SERVICE_NAME_PROGRAM_NIOS);
-    if (_Clients.program_nios->wait_for_service(std::chrono::milliseconds(1000)) == false) {
+    if (_Clients.program_nios->wait_for_service(SERVICE_TIMEOUT) == false) {
         _Clients.program_nios.reset();
         _Ui->programNiosButton->setEnabled(false);
     }
@@ -268,7 +272,7 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // FPGA書き換えサービスを見つける
     _Clients.program_fpga = _NodeThread->node()->create_client<phoenix_msgs::srv::ProgramFpga>(prefix + phoenix::SERVICE_NAME_PROGRAM_FPGA);
-    if (_Clients.program_fpga->wait_for_service(std::chrono::milliseconds(1000)) == false) {
+    if (_Clients.program_fpga->wait_for_service(SERVICE_TIMEOUT) == false) {
         _Clients.program_fpga.reset();
         _Ui->programFpgaButton->setEnabled(false);
     }
@@ -278,7 +282,7 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // セルフテストサービスを見つける
     _Clients.self_test = _NodeThread->node()->create_client<diagnostic_msgs::srv::SelfTest>(prefix + "self_test");
-    if (_Clients.self_test->wait_for_service(std::chrono::milliseconds(1000)) == false) {
+    if (_Clients.self_test->wait_for_service(SERVICE_TIMEOUT) == false) {
         _Clients.self_test.reset();
         _Ui->selfTestButton->setEnabled(false);
     }
@@ -288,6 +292,10 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // スレッドを実行
     _NodeThread->start();
+
+    // パラメータの一覧をツリーに表示する
+    _Ui->parameterGroup->addParameters(_NodeThread->node(), prefix + phoenix::command::NODE_NAME);
+    //_Ui->parameterGroup->addParameters(_NodeThread->node(), prefix + phoenix::stream::NODE_NAME);
 }
 
 void MainWindow::updateTelemertyTreeItems(void) {
@@ -464,6 +472,9 @@ void MainWindow::quitNodeThread(void) {
         _Clients.program_nios.reset();
         _Clients.program_fpga.reset();
         _Clients.self_test.reset();
+
+        // パラメータクライアントを破棄する
+        _Ui->parameterGroup->clearAllParameters();
 
         // スレッドを終了する
         // deleteはdeleteLater()スロットにより行われるのでここでする必要はない

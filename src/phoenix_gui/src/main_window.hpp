@@ -11,6 +11,7 @@
 #include <phoenix_msgs/srv/program_fpga.hpp>
 #include <phoenix_msgs/srv/program_nios.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/parameter_client.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/srv/self_test.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -64,6 +65,8 @@ private:
 
     Q_SLOT void runSelfTest(void);
 
+
+
     /// telemetryTreeに表示する項目の定義
     struct TreeItems_t {
         struct DiagnosticItems_t {
@@ -93,6 +96,10 @@ private:
     static void updateDiagnosticsInformation(TreeItems_t::DiagnosticItems_t &items, const std_msgs::msg::Header &header,
                                              const diagnostic_msgs::msg::DiagnosticStatus &status);
 
+    /**
+     * @brief ROS2ノードを作成する
+     * @return 作成したノード
+     */
     static std::shared_ptr<rclcpp::Node> createNode(void);
 
     /// Qt Designerで作成したUI要素
@@ -140,6 +147,7 @@ private:
         std::shared_ptr<phoenix_msgs::msg::StreamDataMotion> motion;
     } _LastMessages;
 
+    /// 作成したサービスクライアントを保持する
     struct Clients_t {
         rclcpp::Client<phoenix_msgs::srv::ProgramNios>::SharedPtr program_nios;
         rclcpp::Client<phoenix_msgs::srv::ProgramFpga>::SharedPtr program_fpga;
