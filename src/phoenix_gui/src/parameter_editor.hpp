@@ -57,7 +57,6 @@ private:
      * @brief ユーザーによるパラメータの編集を開始する
      * @param item 操作対象のQTreeWidgetItem
      * @param column 操作対象の列
-     * @return 
      */
     Q_SLOT void startItemEditing(QTreeWidgetItem *item, int column);
 
@@ -65,7 +64,6 @@ private:
      * @brief パラメータの変更をノードに反映する
      * @param item 操作対象のQTreeWidgetItem
      * @param column 操作対象の列
-     * @return 
      */
     Q_SLOT void changeParameterValue(QTreeWidgetItem *item, int column);
 

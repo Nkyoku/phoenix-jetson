@@ -58,7 +58,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(_Ui->stopLogButton, &QPushButton::clicked, this, &MainWindow::stopLogging);
     connect(_Ui->programNiosButton, &QPushButton::clicked, this, &MainWindow::programNios);
     connect(_Ui->programFpgaButton, &QPushButton::clicked, this, &MainWindow::programFpga);
-    connect(_Ui->selfTestButton, &QPushButton::clicked, this, &MainWindow::runSelfTest);
     connect(_Ui->controllerGroup, &ControllerControls::commandReady, this, &MainWindow::sendCommand);
 
     // リストを更新する
@@ -79,7 +78,6 @@ void MainWindow::restoreSettings(void) {
     }
     _Ui->splitter->restoreState(settings.value("Splitter1State").toByteArray());
     _Ui->splitter_2->restoreState(settings.value("Splitter2State").toByteArray());
-    _Ui->tabWidget->setCurrentIndex(settings.value("TabIndex", _Ui->tabWidget->currentIndex()).toInt());
 }
 
 void MainWindow::saveSettings(void) const {
@@ -89,7 +87,6 @@ void MainWindow::saveSettings(void) const {
     settings.setValue("WindowMaximized", isMaximized());
     settings.setValue("Splitter1State", _Ui->splitter->saveState());
     settings.setValue("Splitter2State", _Ui->splitter_2->saveState());
-    settings.setValue("TabIndex", _Ui->tabWidget->currentIndex());
 }
 
 void MainWindow::reloadNamespaceList(void) {
@@ -164,16 +161,8 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
     _NodeThread = new NodeThread(this, createNode());
     connect(_NodeThread, &NodeThread::finished, _NodeThread, &QObject::deleteLater);
 
-    // /diagnosticsトピックを受信するSubscriptionを作成する
-    _Subscribers.diagnostics = _NodeThread->node()->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-        "/diagnostics", 10, [this](const std::shared_ptr<diagnostic_msgs::msg::DiagnosticArray> msg) {
-            for (const auto &diag : msg->status) {
-                if (diag.hardware_id == _namespace) {
-                    std::atomic_store(&_LastMessages.diagnostics, msg);
-                    break;
-                }
-            }
-        });
+    // 診断メッセージの受信を開始する
+    _Ui->diagnosticsViewer->startDiagnostics(_NodeThread->node(), _namespace);
 
     // センサーデータを購読するときのQoSの設定
     const rclcpp::SensorDataQoS qos_sensor;
@@ -280,16 +269,6 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
         _Ui->programFpgaButton->setEnabled(true);
     }
 
-    // セルフテストサービスを見つける
-    _Clients.self_test = _NodeThread->node()->create_client<diagnostic_msgs::srv::SelfTest>(prefix + "self_test");
-    if (_Clients.self_test->wait_for_service(SERVICE_TIMEOUT) == false) {
-        _Clients.self_test.reset();
-        _Ui->selfTestButton->setEnabled(false);
-    }
-    else {
-        _Ui->selfTestButton->setEnabled(true);
-    }
-
     // スレッドを実行
     _NodeThread->start();
 
@@ -299,15 +278,6 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 }
 
 void MainWindow::updateTelemertyTreeItems(void) {
-    if (_LastMessages.diagnostics) {
-        auto msg = std::atomic_exchange(&_LastMessages.diagnostics, std::shared_ptr<diagnostic_msgs::msg::DiagnosticArray>());
-        for (const auto &diag : msg->status) {
-            if (diag.hardware_id == _namespace) {
-                updateDiagnosticsInformation(_TreeItems.diag, msg->header, diag);
-                break;
-            }
-        }
-    }
     if (_LastMessages.battery) {
         // auto msg = std::atomic_exchange(&_LastMessages.battery, std::shared_ptr<sensor_msgs::msg::BatteryState>());
         auto msg = _LastMessages.battery;
@@ -347,14 +317,6 @@ void MainWindow::updateTelemertyTreeItems(void) {
 }
 
 void MainWindow::generateTelemetryTreeItems(void) {
-    // diagnosticsの内容を表示するアイテムを作成する
-    auto diag_top = new QTreeWidgetItem(_Ui->telemetryTree, {"Diagnostics"});
-    _TreeItems.diag.timestamp = new QTreeWidgetItem(diag_top, {"Timestamp", "", "s"});
-    _TreeItems.diag.level = new QTreeWidgetItem(diag_top, {"Level"});
-    _TreeItems.diag.message = new QTreeWidgetItem(diag_top, {"Message"});
-    _TreeItems.diag.error = new QTreeWidgetItem(diag_top, {"Error"});
-    _TreeItems.diag.fault = new QTreeWidgetItem(diag_top, {"Fault"});
-
     // batteryの内容を表示するアイテムを作成する
     auto battery_top = new QTreeWidgetItem(_Ui->telemetryTree, {"Battery"});
     _TreeItems.battery.present = new QTreeWidgetItem(battery_top, {"Battery Present"});
@@ -460,7 +422,6 @@ void MainWindow::quitNodeThread(void) {
         _Subscribers.adc2.reset();
         _Subscribers.motion.reset();
         _Subscribers.image.reset();
-        _Subscribers.diagnostics.reset();
 
         // Publisherを破棄する
         _publishers.velocity.reset();
@@ -468,10 +429,11 @@ void MainWindow::quitNodeThread(void) {
         // Clientsを破棄する
         _Ui->programNiosButton->setEnabled(false);
         _Ui->programFpgaButton->setEnabled(false);
-        _Ui->selfTestButton->setEnabled(false);
         _Clients.program_nios.reset();
         _Clients.program_fpga.reset();
-        _Clients.self_test.reset();
+
+        // 診断メッセージの受信を止める
+        _Ui->diagnosticsViewer->stopDiagnostics();
 
         // パラメータクライアントを破棄する
         _Ui->parameterGroup->clearAllParameters();
@@ -585,87 +547,6 @@ void MainWindow::programFpga(void) {
     }
     else {
         QMessageBox::information(this, TITLE, "Finished");
-    }
-}
-
-void MainWindow::runSelfTest(void) {
-    static const QString TITLE("Self Test");
-    auto request = std::make_shared<diagnostic_msgs::srv::SelfTest::Request>();
-    auto result = _Clients.self_test->async_send_request(request);
-    result.wait();
-    auto response = result.get();
-    if (!response) {
-        QMessageBox::critical(this, TITLE, "Service didn't respond");
-    }
-
-    // 結果を表示する。
-    std::stringstream ss;
-    ss << (response->passed ? "passed:" : "failed:");
-    auto it = std::find_if(response->status.begin(), response->status.end(), [&](const diagnostic_msgs::msg::DiagnosticStatus &diag) {
-        return diag.hardware_id == _namespace;
-    });
-    if (it != response->status.end()) {
-        ss << std::endl << "  name: " << it->name;
-        ss << std::endl << "  message: " << it->message;
-        if (!it->values.empty()) {
-            ss << std::endl << "  values:";
-            for (auto &item : it->values) {
-                ss << std::endl << "    " << item.key << ": '" << item.value << '\'';
-            }
-        }
-    }
-    else {
-        ss << " Unknown detail";
-    }
-    if (response->passed) {
-        QMessageBox::information(this, TITLE, QString::fromStdString(ss.str()));
-    }
-    else {
-        QMessageBox::critical(this, TITLE, QString::fromStdString(ss.str()));
-    }
-}
-
-void MainWindow::updateDiagnosticsInformation(TreeItems_t::DiagnosticItems_t &items, const std_msgs::msg::Header &header,
-                                              const diagnostic_msgs::msg::DiagnosticStatus &status) {
-    // timestampをミリ秒単位で表示する
-    items.timestamp->setText(COL, QString("%1.%2").arg(header.stamp.sec).arg(header.stamp.nanosec / 1000000, 3, 10, QLatin1Char('0')));
-
-    // messageを表示する
-    items.message->setText(COL, QString::fromStdString(status.message));
-
-    // levelを表示する
-    static const std::unordered_map<decltype(status.level), QString> level_map = {
-        {diagnostic_msgs::msg::DiagnosticStatus::OK, "OK"},
-        {diagnostic_msgs::msg::DiagnosticStatus::WARN, "WARN"},
-        {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "ERROR"},
-        {diagnostic_msgs::msg::DiagnosticStatus::STALE, "STALE"},
-    };
-    auto it = level_map.find(status.level);
-    if (it != level_map.end()) {
-        items.level->setText(COL, it->second);
-    }
-    else {
-        items.level->setText(COL, QString::number(status.level));
-    }
-
-    // エラーフラグとフォルトフラグを表示する
-    static const QString none("none");
-    bool error_occured = false, fault_occured = false;
-    for (auto &item : status.values) {
-        if (!error_occured && (item.key == "Error Causes")) {
-            items.error->setText(COL, QString::fromStdString(item.value));
-            error_occured = true;
-        }
-        else if (!fault_occured && (item.key == "Fault Causes")) {
-            items.fault->setText(COL, QString::fromStdString(item.value));
-            fault_occured = true;
-        }
-    }
-    if (!error_occured) {
-        items.error->setText(COL, none);
-    }
-    if (!fault_occured) {
-        items.fault->setText(COL, none);
     }
 }
 

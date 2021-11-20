@@ -6,13 +6,17 @@ if(NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 99)
 endif()
 
-# Default to C++14
+# Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+if (MSVC)
+  add_compile_options(/wd4819)
 endif()
 
 set(CMAKE_AUTOMOC ON)
@@ -39,6 +43,7 @@ ament_auto_add_executable(gui
   src/gamepad_thread.cpp
   src/controller.cpp
   src/parameter_editor.cpp
+  src/diagnostics_viewer.cpp
   src/cintelhex/ihex_copy.c
   src/cintelhex/ihex_parse.c
   src/cintelhex/ihex_record.c

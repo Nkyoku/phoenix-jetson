@@ -12,8 +12,6 @@
 #include <phoenix_msgs/srv/program_nios.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/parameter_client.hpp>
-#include <diagnostic_msgs/msg/diagnostic_array.hpp>
-#include <diagnostic_msgs/srv/self_test.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -63,15 +61,8 @@ private:
 
     Q_SLOT void programFpga(void);
 
-    Q_SLOT void runSelfTest(void);
-
-
-
     /// telemetryTreeに表示する項目の定義
     struct TreeItems_t {
-        struct DiagnosticItems_t {
-            QTreeWidgetItem *timestamp, *level, *message, *error, *fault;
-        } diag;
         struct Battery_t {
             QTreeWidgetItem *present, *voltage, *current, *temperature;
         } battery;
@@ -86,15 +77,6 @@ private:
             QTreeWidgetItem *perf_counter, *wheel_current_ref[4], *body_ref_accel[4];
         } control;
     };
-
-    /**
-     * @brief telemetryTreeの診断ステータスを更新する
-     * @param items ツリーの項目
-     * @param header ヘッダー
-     * @param status 診断ステータス
-     */
-    static void updateDiagnosticsInformation(TreeItems_t::DiagnosticItems_t &items, const std_msgs::msg::Header &header,
-                                             const diagnostic_msgs::msg::DiagnosticStatus &status);
 
     /**
      * @brief ROS2ノードを作成する
@@ -131,7 +113,6 @@ private:
         rclcpp::Subscription<phoenix_msgs::msg::StreamDataAdc2>::SharedPtr adc2;
         rclcpp::Subscription<phoenix_msgs::msg::StreamDataMotion>::SharedPtr motion;
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image;
-        rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics;
     } _Subscribers;
 
     /// 作成したPublisherを保持する
@@ -141,7 +122,6 @@ private:
 
     /// 受信した最後のトピックを保持する
     struct LastMessages_t {
-        std::shared_ptr<diagnostic_msgs::msg::DiagnosticArray> diagnostics;
         std::shared_ptr<sensor_msgs::msg::BatteryState> battery;
         std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2> adc2;
         std::shared_ptr<phoenix_msgs::msg::StreamDataMotion> motion;
@@ -151,7 +131,6 @@ private:
     struct Clients_t {
         rclcpp::Client<phoenix_msgs::srv::ProgramNios>::SharedPtr program_nios;
         rclcpp::Client<phoenix_msgs::srv::ProgramFpga>::SharedPtr program_fpga;
-        rclcpp::Client<diagnostic_msgs::srv::SelfTest>::SharedPtr self_test;
     } _Clients;
 
     /// telemetryTreeで値を表示する列
