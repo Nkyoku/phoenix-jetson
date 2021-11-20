@@ -54,11 +54,6 @@ private:
     /// Qt Designerで作成したUI
     Ui_DiagnosticsViewer *_ui = nullptr;
 
-    /// ツリーの項目
-    struct {
-        QTreeWidgetItem *timestamp, *level, *message, *error, *fault;
-    } _treeItems;
-
     /// Diagnosticsメッセージのサブスクライバ
     rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr _diagnosticsSubscription;
 
@@ -70,7 +65,4 @@ private:
 
     /// 最後に受信したDiagnosticsメッセージ
     diagnostic_msgs::msg::DiagnosticArray::SharedPtr _diagnosticsMessage;
-
-    /// 値の列
-    static constexpr int VALUE_COLUMN = 1;
 };

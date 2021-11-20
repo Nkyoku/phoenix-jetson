@@ -10,17 +10,7 @@ DiagnosticsViewer::DiagnosticsViewer(QWidget *parent) : QGroupBox(parent) {
     // UIを生成する
     _ui = new Ui_DiagnosticsViewer;
     _ui->setupUi(this);
-
-    // diagnosticsの内容を表示するアイテムを作成する
-    _treeItems.timestamp = new QTreeWidgetItem(_ui->treeWidget, {"Timestamp", "", "s"});
-    _treeItems.level = new QTreeWidgetItem(_ui->treeWidget, {"Level"});
-    _treeItems.message = new QTreeWidgetItem(_ui->treeWidget, {"Message"});
-    _treeItems.error = new QTreeWidgetItem(_ui->treeWidget, {"Error"});
-    _treeItems.fault = new QTreeWidgetItem(_ui->treeWidget, {"Fault"});
-    
-    // カラム幅を文字に合わせてリサイズする
-    _ui->treeWidget->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    _ui->treeWidget->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+    clearDiagnostics();
 
     connect(_ui->runSelfTestButton, &QPushButton::clicked, this, &DiagnosticsViewer::runSelfTest);
 }
@@ -36,7 +26,7 @@ void DiagnosticsViewer::startDiagnostics(rclcpp::Node::SharedPtr node, const std
         "/diagnostics", 10, [this](const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
             for (const auto &diag : msg->status) {
                 if (diag.hardware_id == _namespace) {
-                    // 特定の診断メッセージを受信したらUIスレッドで更新を行う
+                    // 対象の診断メッセージを受信したらUIスレッドで更新を行う
                     std::atomic_store(&_diagnosticsMessage, msg);
                     QMetaObject::invokeMethod(this, &DiagnosticsViewer::updateDiagnostics, Qt::QueuedConnection);
                     break;
@@ -65,11 +55,12 @@ void DiagnosticsViewer::stopDiagnostics(void) {
 }
 
 void DiagnosticsViewer::clearDiagnostics(void) {
-    int count = _ui->treeWidget->topLevelItemCount();
     QString empty;
-    for (int index = 0; index < count; index++) {
-        _ui->treeWidget->topLevelItem(index)->setText(VALUE_COLUMN, empty);
-    }
+    _ui->timestampLabel->setText(empty);
+    _ui->levelLabel->setText(empty);
+    _ui->messageLabel->setText(empty);
+    _ui->errorLabel->setText(empty);
+    _ui->faultLabel->setText(empty);
 }
 
 void DiagnosticsViewer::runSelfTest(void) {
@@ -125,25 +116,29 @@ void DiagnosticsViewer::updateDiagnostics(void) {
         }
 
         // timestampをミリ秒単位で表示する
-        _treeItems.timestamp->setText(VALUE_COLUMN,
-                                      QString("%1.%2").arg(msg->header.stamp.sec).arg(msg->header.stamp.nanosec / 1000000, 3, 10, QLatin1Char('0')));
+        _ui->timestampLabel->setText(QString("%1.%2").arg(msg->header.stamp.sec).arg(msg->header.stamp.nanosec / 1000000, 3, 10, QLatin1Char('0')));
 
         // messageを表示する
-        _treeItems.message->setText(VALUE_COLUMN, QString::fromStdString(status.message));
+        _ui->messageLabel->setText(QString::fromStdString(status.message));
 
         // levelを表示する
-        static const std::unordered_map<decltype(status.level), QString> level_map = {
-            {diagnostic_msgs::msg::DiagnosticStatus::OK, "OK"},
-            {diagnostic_msgs::msg::DiagnosticStatus::WARN, "WARN"},
-            {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "ERROR"},
-            {diagnostic_msgs::msg::DiagnosticStatus::STALE, "STALE"},
-        };
-        auto it = level_map.find(status.level);
-        if (it != level_map.end()) {
-            _treeItems.level->setText(VALUE_COLUMN, it->second);
-        }
-        else {
-            _treeItems.level->setText(VALUE_COLUMN, QString::number(status.level));
+        {
+            static const std::unordered_map<decltype(status.level), QString> level_map = {
+                {diagnostic_msgs::msg::DiagnosticStatus::OK, "OK"},
+                {diagnostic_msgs::msg::DiagnosticStatus::WARN, "WARN"},
+                {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "ERROR"},
+                {diagnostic_msgs::msg::DiagnosticStatus::STALE, "STALE"},
+            };
+            auto it = level_map.find(status.level);
+            if (it != level_map.end()) {
+                _ui->levelLabel->setText(it->second);
+            }
+            else {
+                _ui->levelLabel->setText(QString::number(status.level));
+            }
+            auto palette = _ui->levelLabel->palette();
+            palette.setColor(QPalette::WindowText, (status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) ? QColor(0, 0, 0) : QColor(255, 0, 0));
+            _ui->levelLabel->setPalette(palette);
         }
 
         // エラーフラグとフォルトフラグを表示する
@@ -151,19 +146,19 @@ void DiagnosticsViewer::updateDiagnostics(void) {
         bool error_occured = false, fault_occured = false;
         for (auto &item : status.values) {
             if (!error_occured && (item.key == "Error Causes")) {
-                _treeItems.error->setText(VALUE_COLUMN, QString::fromStdString(item.value));
+                _ui->errorLabel->setText(QString::fromStdString(item.value));
                 error_occured = true;
             }
             else if (!fault_occured && (item.key == "Fault Causes")) {
-                _treeItems.fault->setText(VALUE_COLUMN, QString::fromStdString(item.value));
+                _ui->faultLabel->setText(QString::fromStdString(item.value));
                 fault_occured = true;
             }
         }
         if (!error_occured) {
-            _treeItems.error->setText(VALUE_COLUMN, none);
+            _ui->errorLabel->setText(none);
         }
         if (!fault_occured) {
-            _treeItems.fault->setText(VALUE_COLUMN, none);
+            _ui->faultLabel->setText(none);
         }
 
         break;
