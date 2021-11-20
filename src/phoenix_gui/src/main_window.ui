@@ -130,82 +130,10 @@
          </widget>
         </item>
         <item>
-         <widget class="QGroupBox" name="groupBox">
+         <widget class="TelemetryViewer" name="telemetryViewer">
           <property name="title">
            <string>Telemetry Viewer</string>
           </property>
-          <property name="checkable">
-           <bool>true</bool>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_2">
-           <property name="spacing">
-            <number>4</number>
-           </property>
-           <property name="leftMargin">
-            <number>4</number>
-           </property>
-           <property name="topMargin">
-            <number>4</number>
-           </property>
-           <property name="rightMargin">
-            <number>4</number>
-           </property>
-           <property name="bottomMargin">
-            <number>4</number>
-           </property>
-           <item>
-            <widget class="QTreeWidget" name="telemetryTree">
-             <property name="columnCount">
-              <number>3</number>
-             </property>
-             <attribute name="headerCascadingSectionResizes">
-              <bool>true</bool>
-             </attribute>
-             <attribute name="headerStretchLastSection">
-              <bool>false</bool>
-             </attribute>
-             <column>
-              <property name="text">
-               <string>Name</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Value</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Unit</string>
-              </property>
-             </column>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_2">
-             <property name="spacing">
-              <number>4</number>
-             </property>
-             <item>
-              <widget class="QPushButton" name="saveLogButton">
-               <property name="text">
-                <string>Save Log...</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="stopLogButton">
-               <property name="enabled">
-                <bool>false</bool>
-               </property>
-               <property name="text">
-                <string>Stop Log</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
          </widget>
         </item>
         <item>
@@ -358,6 +286,12 @@
    <class>SystemGroup</class>
    <extends>QGroupBox</extends>
    <header>system_group.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>TelemetryViewer</class>
+   <extends>QGroupBox</extends>
+   <header>telemetry_viewer.hpp</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

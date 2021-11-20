@@ -44,6 +44,7 @@ ament_auto_add_executable(gui
   src/controller.cpp
   src/parameter_editor.cpp
   src/diagnostics_viewer.cpp
+  src/telemetry_viewer.cpp
   src/system_group.cpp
   src/cintelhex/ihex_copy.c
   src/cintelhex/ihex_parse.c

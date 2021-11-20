@@ -3,15 +3,9 @@
 #define NOGDI
 #include "image_viewer.hpp"
 #include "node_thread.hpp"
-#include <QtCore/QFile>
 #include <QtWidgets/QMainWindow>
-#include <QtWidgets/QTreeWidgetItem>
-#include <phoenix_msgs/msg/stream_data_adc2.hpp>
-#include <phoenix_msgs/msg/stream_data_motion.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/parameter_client.hpp>
 #include <geometry_msgs/msg/twist.hpp>
-#include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 class Ui_MainWindow;
@@ -35,42 +29,15 @@ private:
      */
     void saveSettings(void) const;
 
-    // void closeEvent(QCloseEvent *event) override;
-
     Q_SLOT void reloadNamespaceList(void);
 
     Q_SLOT void connectToNodes(const QString &namespace_name);
-
-    Q_SLOT void updateTelemertyTreeItems(void);
-
-    void generateTelemetryTreeItems(void);
-
-    Q_SLOT void startLogging(void);
-
-    Q_SLOT void stopLogging(void);
 
     Q_SLOT void quitNodeThread(void);
 
     Q_SIGNAL void updateRequest(void);
 
     Q_SLOT void sendCommand(void);
-
-    /// telemetryTreeに表示する項目の定義
-    struct TreeItems_t {
-        struct Battery_t {
-            QTreeWidgetItem *present, *voltage, *current, *temperature;
-        } battery;
-        struct Adc2_t {
-            QTreeWidgetItem *dc48v_voltage, *dribble_voltage, *dribble_current;
-        } adc2;
-        struct Motion_t {
-            QTreeWidgetItem *accelerometer[3], *gyroscope[3], *gravity[3], *body_acceleration[3], *body_velocity[3];
-            QTreeWidgetItem *wheel_velocity[4], *wheel_current_d[4], *wheel_current_q[4];
-        } motion;
-        struct Control_t {
-            QTreeWidgetItem *perf_counter, *wheel_current_ref[4], *body_ref_accel[4];
-        } control;
-    };
 
     /**
      * @brief ROS2ノードを作成する
@@ -83,15 +50,6 @@ private:
 
     ImageViewerWidget *_image_viewer;
 
-    /// telemetryTreeに表示する項目
-    TreeItems_t _TreeItems;
-
-    /// テレメトリのログを保存するファイル
-    std::shared_ptr<QFile> _LogFile;
-
-    /// テレメトリのログに含まれるフレーム番号
-    uint32_t _LogFrameNumber = 0;
-
     /// ROS2のネットワークを監視するためのノード
     std::shared_ptr<rclcpp::Node> _NetworkAwarenessNode;
 
@@ -103,9 +61,6 @@ private:
 
     // 作成したSubscriptionを保持する
     struct Subscriptions_t {
-        rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery;
-        rclcpp::Subscription<phoenix_msgs::msg::StreamDataAdc2>::SharedPtr adc2;
-        rclcpp::Subscription<phoenix_msgs::msg::StreamDataMotion>::SharedPtr motion;
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image;
     } _Subscribers;
 
@@ -113,16 +68,6 @@ private:
     struct Publisher_t {
         rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocity;
     } _publishers;
-
-    /// 受信した最後のトピックを保持する
-    struct LastMessages_t {
-        std::shared_ptr<sensor_msgs::msg::BatteryState> battery;
-        std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2> adc2;
-        std::shared_ptr<phoenix_msgs::msg::StreamDataMotion> motion;
-    } _LastMessages;
-
-    /// telemetryTreeで値を表示する列
-    static constexpr int COL = 1;
 
     /// GUIのノード名の頭に付ける文字列
     static constexpr char GUI_NODE_NAME_PREFIX[] = "phoenix_gui_";
