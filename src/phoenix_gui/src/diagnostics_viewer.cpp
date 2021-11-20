@@ -1,5 +1,6 @@
 #include "diagnostics_viewer.hpp"
 #include "ui_diagnostics_viewer.h"
+#include "common.hpp"
 #include <QtWidgets/QMessageBox>
 
 using namespace std::chrono_literals;
@@ -17,7 +18,7 @@ DiagnosticsViewer::DiagnosticsViewer(QWidget *parent) : QGroupBox(parent) {
 
 DiagnosticsViewer::~DiagnosticsViewer() {}
 
-void DiagnosticsViewer::startDiagnostics(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace) {
+void DiagnosticsViewer::initializeNode(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace) {
     _namespace = remote_node_namespace;
     clearDiagnostics();
 
@@ -35,11 +36,7 @@ void DiagnosticsViewer::startDiagnostics(rclcpp::Node::SharedPtr node, const std
         });
 
     // self_testサービスと接続する
-    std::string prefix = _namespace;
-    if (prefix.back() != '/') {
-        prefix += '/';
-    }
-    _selfTestService = node->create_client<diagnostic_msgs::srv::SelfTest>(prefix + "self_test");
+    _selfTestService = node->create_client<diagnostic_msgs::srv::SelfTest>(constructName(_namespace, "self_test"));
     if (_selfTestService->wait_for_service(SERVICE_TIMEOUT)) {
         _ui->runSelfTestButton->setEnabled(true);
     }
@@ -49,7 +46,7 @@ void DiagnosticsViewer::startDiagnostics(rclcpp::Node::SharedPtr node, const std
     }
 }
 
-void DiagnosticsViewer::stopDiagnostics(void) {
+void DiagnosticsViewer::uninitializeNode(void) {
     _diagnosticsSubscription.reset();
     _selfTestService.reset();
 }

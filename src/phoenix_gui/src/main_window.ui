@@ -72,9 +72,9 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="reloadButton">
+        <widget class="QPushButton" name="scanButton">
          <property name="text">
-          <string>Reload</string>
+          <string>Scan</string>
          </property>
         </widget>
        </item>
@@ -209,47 +209,10 @@
          </widget>
         </item>
         <item>
-         <widget class="QGroupBox" name="groupBox_3">
+         <widget class="SystemGroup" name="systemGroup">
           <property name="title">
            <string>System</string>
           </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_4">
-           <property name="spacing">
-            <number>4</number>
-           </property>
-           <property name="leftMargin">
-            <number>4</number>
-           </property>
-           <property name="topMargin">
-            <number>4</number>
-           </property>
-           <property name="rightMargin">
-            <number>4</number>
-           </property>
-           <property name="bottomMargin">
-            <number>4</number>
-           </property>
-           <item>
-            <widget class="QPushButton" name="programNiosButton">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-             <property name="text">
-              <string>Program NIOS II...</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="programFpgaButton">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-             <property name="text">
-              <string>Program FPGA...</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
          </widget>
         </item>
        </layout>
@@ -389,6 +352,12 @@
    <class>DiagnosticsViewer</class>
    <extends>QGroupBox</extends>
    <header>diagnostics_viewer.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>SystemGroup</class>
+   <extends>QGroupBox</extends>
+   <header>system_group.hpp</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>ParameterEditor</class>
- <widget class="QWidget" name="ParameterEditor">
+ <class>SystemGroup</class>
+ <widget class="QWidget" name="SystemGroup">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -11,9 +11,9 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Controller</string>
+   <string>SystemGroup</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout">
+  <layout class="QHBoxLayout" name="horizontalLayout">
    <property name="spacing">
     <number>4</number>
    </property>
@@ -30,28 +30,23 @@
     <number>4</number>
    </property>
    <item>
-    <widget class="QTreeWidget" name="treeWidget">
-     <property name="editTriggers">
-      <set>QAbstractItemView::NoEditTriggers</set>
+    <widget class="QPushButton" name="programNiosButton">
+     <property name="enabled">
+      <bool>false</bool>
      </property>
-     <property name="columnCount">
-      <number>3</number>
+     <property name="text">
+      <string>Program Nios II</string>
      </property>
-     <column>
-      <property name="text">
-       <string>Parameter</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Value</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Type</string>
-      </property>
-     </column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="programFpgaButton">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="text">
+      <string>Program FPGA</string>
+     </property>
     </widget>
    </item>
   </layout>

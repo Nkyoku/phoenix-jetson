@@ -1,5 +1,4 @@
 ﻿#include "main_window.hpp"
-#include "cintelhex/cintelhex.h"
 #include "format_value.hpp"
 #include "ui_main_window.h"
 #include "../../phoenix/include/phoenix.hpp"
@@ -22,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // UIを生成する
     _Ui = new Ui_MainWindow;
     _Ui->setupUi(this);
-    _Ui->reloadButton->setIcon(QApplication::style()->standardPixmap(QStyle::SP_BrowserReload));
+    _Ui->scanButton->setIcon(QApplication::style()->standardPixmap(QStyle::SP_BrowserReload));
     _Ui->namespaceComboBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     generateTelemetryTreeItems();
 
@@ -51,13 +50,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(timer2, &QTimer::timeout, this, &MainWindow::sendCommand);*/
 
     // Qtのシグナルを接続する
-    connect(_Ui->reloadButton, &QPushButton::clicked, this, &MainWindow::reloadNamespaceList);
+    connect(_Ui->scanButton, &QPushButton::clicked, this, &MainWindow::reloadNamespaceList);
     connect(_Ui->namespaceComboBox, &QComboBox::currentTextChanged, this, &MainWindow::connectToNodes);
     connect(this, &MainWindow::updateRequest, _image_viewer, qOverload<>(&ImageViewerWidget::update), Qt::QueuedConnection);
     connect(_Ui->saveLogButton, &QPushButton::clicked, this, &MainWindow::startLogging);
     connect(_Ui->stopLogButton, &QPushButton::clicked, this, &MainWindow::stopLogging);
-    connect(_Ui->programNiosButton, &QPushButton::clicked, this, &MainWindow::programNios);
-    connect(_Ui->programFpgaButton, &QPushButton::clicked, this, &MainWindow::programFpga);
     connect(_Ui->controllerGroup, &ControllerControls::commandReady, this, &MainWindow::sendCommand);
 
     // リストを更新する
@@ -161,8 +158,9 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
     _NodeThread = new NodeThread(this, createNode());
     connect(_NodeThread, &NodeThread::finished, _NodeThread, &QObject::deleteLater);
 
-    // 診断メッセージの受信を開始する
-    _Ui->diagnosticsViewer->startDiagnostics(_NodeThread->node(), _namespace);
+    // 各UI部品のノードの機能を初期化する
+    _Ui->diagnosticsViewer->initializeNode(_NodeThread->node(), _namespace);
+    _Ui->systemGroup->initializeNode(_NodeThread->node(), _namespace);
 
     // センサーデータを購読するときのQoSの設定
     const rclcpp::SensorDataQoS qos_sensor;
@@ -248,26 +246,6 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // cmd_velトピックを配信するPublisherを作成する
     _publishers.velocity = _NodeThread->node()->create_publisher<geometry_msgs::msg::Twist>(prefix + phoenix::TOPIC_NAME_COMMAND_VELOCITY, 1);
-
-    // NiosII書き換えサービスを見つける
-    _Clients.program_nios = _NodeThread->node()->create_client<phoenix_msgs::srv::ProgramNios>(prefix + phoenix::SERVICE_NAME_PROGRAM_NIOS);
-    if (_Clients.program_nios->wait_for_service(SERVICE_TIMEOUT) == false) {
-        _Clients.program_nios.reset();
-        _Ui->programNiosButton->setEnabled(false);
-    }
-    else {
-        _Ui->programNiosButton->setEnabled(true);
-    }
-
-    // FPGA書き換えサービスを見つける
-    _Clients.program_fpga = _NodeThread->node()->create_client<phoenix_msgs::srv::ProgramFpga>(prefix + phoenix::SERVICE_NAME_PROGRAM_FPGA);
-    if (_Clients.program_fpga->wait_for_service(SERVICE_TIMEOUT) == false) {
-        _Clients.program_fpga.reset();
-        _Ui->programFpgaButton->setEnabled(false);
-    }
-    else {
-        _Ui->programFpgaButton->setEnabled(true);
-    }
 
     // スレッドを実行
     _NodeThread->start();
@@ -426,17 +404,10 @@ void MainWindow::quitNodeThread(void) {
         // Publisherを破棄する
         _publishers.velocity.reset();
 
-        // Clientsを破棄する
-        _Ui->programNiosButton->setEnabled(false);
-        _Ui->programFpgaButton->setEnabled(false);
-        _Clients.program_nios.reset();
-        _Clients.program_fpga.reset();
-
-        // 診断メッセージの受信を止める
-        _Ui->diagnosticsViewer->stopDiagnostics();
-
-        // パラメータクライアントを破棄する
-        _Ui->parameterGroup->clearAllParameters();
+        // 各UI部品が受け持つノードの機能を終了する
+        _Ui->diagnosticsViewer->uninitializeNode();
+        _Ui->systemGroup->uninitializeNode();
+        _Ui->parameterGroup->uninitializeNode();
 
         // スレッドを終了する
         // deleteはdeleteLater()スロットにより行われるのでここでする必要はない
@@ -451,102 +422,6 @@ void MainWindow::sendCommand(void) {
     if (_publishers.velocity) {
         geometry_msgs::msg::Twist msg = _Ui->controllerGroup->targetVelocity();
         _publishers.velocity->publish(msg);
-    }
-}
-
-void MainWindow::programNios(void) {
-    static const QString TITLE("Program NIOS");
-
-    QString path = QFileDialog::getOpenFileName(this, "Open HEX File", "", "Intel HEX (*.hex)");
-    if (path.isEmpty()) {
-        return;
-    }
-
-    // Hexファイルを読み込む
-    auto request = std::make_shared<phoenix_msgs::srv::ProgramNios::Request>();
-    ihex_recordset_t *recored_set = ihex_rs_from_file(path.toStdString().c_str());
-    size_t copied_bytes = 0;
-    uint_t i = 0;
-    ihex_record_t *record;
-    int err;
-    do {
-        uint32_t offset;
-        err = ihex_rs_iterate_data(recored_set, &i, &record, &offset);
-        if (err || record == 0)
-            break;
-        uint32_t address = offset + record->ihr_address;
-        uint32_t length = record->ihr_length;
-        if ((length % 4) != 0) {
-            err = 1;
-            break;
-        }
-        if ((0 <= address * 4) && ((address * 4 + length) <= request->program.size())) {
-            const uint32_t *src = reinterpret_cast<const uint32_t *>(record->ihr_data);
-            uint32_t *dst = reinterpret_cast<uint32_t *>(request->program.data() + address * 4);
-            for (size_t index = 0; index < (length / 4); index++) {
-                uint32_t data = *src++;
-                *dst++ = ((data >> 24) & 0xFFu) | ((data >> 8) & 0xFF00u) | ((data << 8) & 0xFF0000u) | (data << 24);
-            }
-            copied_bytes += length;
-        }
-    } while (0 < i);
-    ihex_rs_free(recored_set);
-    if (err || (copied_bytes != request->program.size())) {
-        QMessageBox::critical(this, TITLE, "An error occured while loading HEX file");
-        return;
-    }
-
-    // プログラムを転送する
-    auto result = _Clients.program_nios->async_send_request(request);
-    result.wait();
-    auto response = result.get();
-    if (!response) {
-        QMessageBox::critical(this, TITLE, "Service didn't respond");
-    }
-    else if (!response->succeeded) {
-        QMessageBox::critical(this, TITLE, "An error occured while programming memory");
-    }
-    else {
-        QMessageBox::information(this, TITLE, "Finished");
-    }
-}
-
-void MainWindow::programFpga(void) {
-    static const QString TITLE("Program FPGA");
-
-    QString path = QFileDialog::getOpenFileName(this, "Open RPD File", "", "Raw Programming Data File (*.rpd)");
-    if (path.isEmpty()) {
-        return;
-    }
-
-    // RPDファイルを読み込む
-    auto request = std::make_shared<phoenix_msgs::srv::ProgramFpga::Request>();
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, TITLE, "Failed to load file");
-        return;
-    }
-    QByteArray binary = file.readAll();
-    file.close();
-    if (request->bitstream.size() < (size_t)binary.size()) {
-        QMessageBox::critical(this, TITLE, QString("Size of the RPD file must be less than %1 bytes").arg(request->bitstream.size()));
-        return;
-    }
-    memcpy(request->bitstream.data(), binary.constData(), binary.size());
-    memset(request->bitstream.data() + binary.size(), 0xFF, request->bitstream.size() - (size_t)binary.size());
-
-    // ビットストリームを転送する
-    auto result = _Clients.program_fpga->async_send_request(request);
-    result.wait();
-    auto response = result.get();
-    if (!response) {
-        QMessageBox::critical(this, TITLE, "Service didn't respond");
-    }
-    else if (!response->succeeded) {
-        QMessageBox::critical(this, TITLE, "An error occured while programming bitstream");
-    }
-    else {
-        QMessageBox::information(this, TITLE, "Finished");
     }
 }
 

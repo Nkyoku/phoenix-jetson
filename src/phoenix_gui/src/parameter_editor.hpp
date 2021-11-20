@@ -25,9 +25,9 @@ public:
     void addParameters(rclcpp::Node::SharedPtr node, const std::string &remote_node_name);
 
     /**
-     * @brief 全てのパラメータをツリーからを削除する
+     * @brief ノードの終了処理を行う
      */
-    void clearAllParameters(void);
+    void uninitializeNode(void);
 
 private:
     /**

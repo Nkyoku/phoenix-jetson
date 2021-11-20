@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QtWidgets/QGroupBox>
-#include <QtWidgets/QTreeWidgetItem>
 #include <rclcpp/rclcpp.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/srv/self_test.hpp>
@@ -17,16 +16,16 @@ public:
     ~DiagnosticsViewer();
 
     /**
-     * @brief 診断メッセージの受信を開始する
+     * @brief ノードの初期化処理を行う
      * @param node ローカルノード
      * @param remote_node_namespace リモートノードの名前空間
      */
-    void startDiagnostics(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace);
+    void initializeNode(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace);
 
     /**
-     * @brief 診断メッセージの受信を停止する
+     * @brief ノードの終了処理を行う
      */
-    void stopDiagnostics(void);
+    void uninitializeNode(void);
 
     /**
      * @brief 診断メッセージの表示をクリアする

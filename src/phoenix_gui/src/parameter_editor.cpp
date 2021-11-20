@@ -48,7 +48,7 @@ void ParameterEditor::addParameters(rclcpp::Node::SharedPtr node, const std::str
     }
 }
 
-void ParameterEditor::clearAllParameters(void) {
+void ParameterEditor::uninitializeNode(void) {
     _ui->treeWidget->clear();
     _parameter_clients.clear();
 }
