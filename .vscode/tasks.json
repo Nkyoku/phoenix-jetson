@@ -25,6 +25,8 @@
             "args": [
                 "build",
                 "--merge-install",
+                "--cmake-args",
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                 "--packages-select",
                 "phoenix_msgs"
             ],
@@ -42,6 +44,8 @@
             "args": [
                 "build",
                 "--merge-install",
+                "--cmake-args",
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                 "--event-handlers",
                 "console_cohesion+",
                 "--packages-select",
@@ -60,7 +64,7 @@
             "command": "windeployqt",
             "args": [
                 "--no-compiler-runtimes",
-                "${workspaceFolder}\\install\\phoenix_gui\\lib\\phoenix_gui\\gui.exe"
+                "${workspaceFolder}/install/phoenix_gui/lib/phoenix_gui/gui.exe"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

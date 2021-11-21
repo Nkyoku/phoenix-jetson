@@ -6,8 +6,8 @@
                 "${COLCON_PREFIX_PATH}/include",
                 "${workspaceFolder}/install/include",
                 "${workspaceFolder}/phoenix-firmware/FPGA/App/software/controller/include",
-                "${QT5_DIR}/include",
-                "${workspaceFolder}/build/phoenix_gui/gui_autogen/include_Release"
+                "${workspaceFolder}/build/phoenix_gui/gui_autogen/include_RelWithDebInfo",
+                "${QT5_DIR}/include"
             ],
             "defines": [],
             "cStandard": "c17",
@@ -19,6 +19,7 @@
             "includePath": [
                 "${workspaceFolder}/install/include",
                 "${workspaceFolder}/phoenix-firmware/FPGA/App/software/controller/include",
+                "${workspaceFolder}/build/phoenix_gui/gui_autogen/include_RelWithDebInfo",
                 "/opt/ros/foxy/include",
                 "/usr/local/cuda/include",
                 "/usr/include/opencv4",

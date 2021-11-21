@@ -32,7 +32,7 @@
    <item>
     <widget class="QTreeWidget" name="telemetryTree">
      <property name="columnCount">
-      <number>3</number>
+      <number>2</number>
      </property>
      <attribute name="headerCascadingSectionResizes">
       <bool>true</bool>
@@ -48,11 +48,6 @@
      <column>
       <property name="text">
        <string>Value</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Unit</string>
       </property>
      </column>
     </widget>

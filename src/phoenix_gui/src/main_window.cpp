@@ -1,6 +1,10 @@
 ﻿#include "main_window.hpp"
 #include "ui_main_window.h"
+#include "common.hpp"
 #include "../../phoenix/include/phoenix.hpp"
+#include <sensor_msgs/msg/battery_state.hpp>
+#include <phoenix_msgs/msg/stream_data_adc2.hpp>
+#include <phoenix_msgs/msg/stream_data_motion.hpp>
 #include <QtCore/QDebug>
 #include <QtCore/QSettings>
 #include <QtCore/QSysInfo>
@@ -138,32 +142,38 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
 
     // ノードとスレッドを作成する
     _NodeThread = new NodeThread(this, createNode());
+    auto &node = _NodeThread->node();
     connect(_NodeThread, &NodeThread::finished, _NodeThread, &QObject::deleteLater);
 
-    // 各UI部品のノードの機能を初期化する
-    _Ui->diagnosticsViewer->initializeNode(_NodeThread->node(), _namespace);
-    _Ui->telemetryViewer->initializeNode(_NodeThread->node(), _namespace);
-    _Ui->systemGroup->initializeNode(_NodeThread->node(), _namespace);
 
-    // センサーデータを購読するときのQoSの設定
+    // 各UI部品のノードの機能を初期化する
+    _Ui->diagnosticsViewer->initializeNode(node, _namespace);
+    _Ui->systemGroup->initializeNode(node, _namespace);
+
+    // センサーデータをサブスクライブするときのQoSの設定
     const rclcpp::SensorDataQoS qos_sensor;
 
+    // テレメトリとして表示するトピックをサブスクライブする
+    _Ui->telemetryViewer->addSubscription<sensor_msgs::msg::BatteryState>(node, constructName(_namespace, phoenix::TOPIC_NAME_BATTERY), qos_sensor);
+    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataAdc2>(node, constructName(_namespace, phoenix::TOPIC_NAME_ADC2), qos_sensor);
+    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataMotion>(node, constructName(_namespace, phoenix::TOPIC_NAME_MOTION), qos_sensor);
+
     // imageトピックを受信するSubscriptionを作成する
-    _Subscribers.image = _NodeThread->node()->create_subscription<sensor_msgs::msg::Image>("/video_source/raw", qos_sensor,
-                                                                                           [this](const std::shared_ptr<sensor_msgs::msg::Image> msg) {
-                                                                                               _image_viewer->setImage(msg);
-                                                                                               emit updateRequest();
-                                                                                           });
+    _Subscribers.image =
+        node->create_subscription<sensor_msgs::msg::Image>("/video_source/raw", qos_sensor, [this](const std::shared_ptr<sensor_msgs::msg::Image> msg) {
+            _image_viewer->setImage(msg);
+            emit updateRequest();
+        });
 
     // cmd_velトピックを配信するPublisherを作成する
-    _publishers.velocity = _NodeThread->node()->create_publisher<geometry_msgs::msg::Twist>(prefix + phoenix::TOPIC_NAME_COMMAND_VELOCITY, 1);
+    _publishers.velocity = node->create_publisher<geometry_msgs::msg::Twist>(prefix + phoenix::TOPIC_NAME_COMMAND_VELOCITY, 1);
 
     // スレッドを実行
     _NodeThread->start();
 
     // パラメータの一覧をツリーに表示する
-    _Ui->parameterGroup->addParameters(_NodeThread->node(), prefix + phoenix::command::NODE_NAME);
-    //_Ui->parameterGroup->addParameters(_NodeThread->node(), prefix + phoenix::stream::NODE_NAME);
+    _Ui->parameterGroup->addParameters(node, constructName(_namespace, phoenix::command::NODE_NAME));
+    //_Ui->parameterGroup->addParameters(node, constructName(_namespace, phoenix::stream::NODE_NAME));
 }
 
 void MainWindow::quitNodeThread(void) {

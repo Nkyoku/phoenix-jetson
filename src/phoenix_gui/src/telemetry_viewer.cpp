@@ -1,21 +1,21 @@
 #include "telemetry_viewer.hpp"
 #include "ui_telemetry_viewer.h"
-#include "../../phoenix/include/phoenix.hpp"
-#include "format_value.hpp"
-#include "common.hpp"
+#include <rosidl_typesupport_introspection_cpp/field_types.hpp>
+#include <rosidl_typesupport_introspection_cpp/message_introspection.hpp>
 #include <QtCore/QTimer>
 #include <QtCore/QTextStream>
 #include <QtWidgets/QFileDialog>
-
-using namespace std::chrono_literals;
-
-constexpr auto SERVICE_TIMEOUT = 1s;
+#include <QtCore/QtDebug>
 
 TelemetryViewer::TelemetryViewer(QWidget *parent) : QGroupBox(parent) {
     // UIを生成する
     _ui = new Ui_TelemetryViewer;
     _ui->setupUi(this);
-    generateTelemetryTreeItems();
+
+    // カラム幅を文字に合わせてリサイズする
+    _ui->telemetryTree->expandAll();
+    _ui->telemetryTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    _ui->telemetryTree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
 
     connect(_ui->saveLogButton, &QPushButton::clicked, this, &TelemetryViewer::startLogging);
     connect(_ui->stopLogButton, &QPushButton::clicked, this, &TelemetryViewer::stopLogging);
@@ -28,129 +28,18 @@ TelemetryViewer::TelemetryViewer(QWidget *parent) : QGroupBox(parent) {
 
 TelemetryViewer::~TelemetryViewer() {}
 
-void TelemetryViewer::initializeNode(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace) {
-    const rclcpp::SensorDataQoS qos_sensor;
-
-    // batteryトピックを受信するSubscriptionを作成する
-    _battery_subscription = node->create_subscription<sensor_msgs::msg::BatteryState>(
-        constructName(remote_node_namespace, phoenix::TOPIC_NAME_BATTERY), qos_sensor, [this](const std::shared_ptr<sensor_msgs::msg::BatteryState> msg) {
-            std::atomic_store(&_battery_message, msg);
-        });
-
-    // stream_data_adc2トピックを受信するSubscriptionを作成する
-    _adc2_subscription = node->create_subscription<phoenix_msgs::msg::StreamDataAdc2>(
-        constructName(remote_node_namespace, phoenix::TOPIC_NAME_ADC2), qos_sensor, [this](const std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2> msg) {
-            if (!_adc2_message) {
-                std::atomic_store(&_adc2_message, msg);
-            }
-            else {
-                /*std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2> last_msg = _adc2_message;
-                msg->dc48v_voltage = std::max(msg->dc48v_voltage, last_msg->dc48v_voltage);
-                msg->dribble_current = std::max(msg->dribble_current, last_msg->dribble_current);*/
-                std::atomic_store(&_adc2_message, msg);
-            }
-        });
-
-    // stream_data_motionトピックを受信するSubscriptionを作成する
-    _motion_subscription = node->create_subscription<phoenix_msgs::msg::StreamDataMotion>(
-        constructName(remote_node_namespace, phoenix::TOPIC_NAME_MOTION), qos_sensor, [this](const std::shared_ptr<phoenix_msgs::msg::StreamDataMotion> msg) {
-            std::atomic_store(&_motion_message, msg);
-            std::shared_ptr<QFile> file = _log_file;
-            if (file) {
-                QTextStream stream(file.get());
-                QChar sep(',');
-                std::shared_ptr<sensor_msgs::msg::BatteryState> battery_msg = _battery_message;
-                std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2> adc2_msg = _adc2_message;
-                float battery_voltage = battery_msg ? battery_msg->voltage : 0.0f;
-                float battery_current = battery_msg ? -battery_msg->current : 0.0f;
-                float dc48v_voltage = adc2_msg ? adc2_msg->dc48v_voltage : 0.0f;
-                stream << (0.001 * _frame_number) << sep;
-                stream << msg->accelerometer[0] << sep;
-                stream << msg->accelerometer[1] << sep;
-                stream << msg->accelerometer[2] << sep;
-                stream << msg->gyroscope[0] << sep;
-                stream << msg->gyroscope[1] << sep;
-                stream << msg->gyroscope[2] << sep;
-                stream << msg->gravity[0] << sep;
-                stream << msg->gravity[1] << sep;
-                stream << msg->gravity[2] << sep;
-                stream << msg->body_acceleration[0] << sep;
-                stream << msg->body_acceleration[1] << sep;
-                stream << msg->body_acceleration[2] << sep;
-                stream << msg->body_velocity[0] << sep;
-                stream << msg->body_velocity[1] << sep;
-                stream << msg->body_velocity[2] << sep;
-                stream << msg->wheel_velocity_meas[0] << sep;
-                stream << msg->wheel_velocity_meas[1] << sep;
-                stream << msg->wheel_velocity_meas[2] << sep;
-                stream << msg->wheel_velocity_meas[3] << sep;
-                stream << msg->wheel_current_meas_q[0] << sep;
-                stream << msg->wheel_current_meas_q[1] << sep;
-                stream << msg->wheel_current_meas_q[2] << sep;
-                stream << msg->wheel_current_meas_q[3] << sep;
-                stream << msg->wheel_current_ref[0] << sep;
-                stream << msg->wheel_current_ref[1] << sep;
-                stream << msg->wheel_current_ref[2] << sep;
-                stream << msg->wheel_current_ref[3] << sep;
-                stream << msg->body_ref_accel[0] << sep;
-                stream << msg->body_ref_accel[1] << sep;
-                stream << msg->body_ref_accel[2] << sep;
-                stream << msg->body_ref_accel[3] << sep;
-                stream << dc48v_voltage << sep;
-                stream << battery_voltage << sep;
-                stream << battery_current << Qt::endl;
-                _frame_number++;
-            }
-        });
-}
-
 void TelemetryViewer::uninitializeNode(void) {
-    _battery_subscription.reset();
-    _adc2_subscription.reset();
-    _motion_subscription.reset();
+    _subscribers.clear();
 }
 
 void TelemetryViewer::updateTelemertyTreeItems(void) {
-    if (_battery_message) {
-        // auto msg = std::atomic_exchange(&_battery_message, std::shared_ptr<sensor_msgs::msg::BatteryState>());
-        auto msg = _battery_message;
-        _tree_items.battery.present->setText(VALUE_COLUMN, boolToString(msg->present));
-        _tree_items.battery.voltage->setText(VALUE_COLUMN, QString::number(msg->voltage, 'f', 3));
-        _tree_items.battery.current->setText(VALUE_COLUMN, QString::number(msg->current, 'f', 3));
-        _tree_items.battery.temperature->setText(VALUE_COLUMN, QString::number(msg->temperature, 'f', 2));
-    }
-    if (_adc2_message) {
-        // auto msg = std::atomic_exchange(&_adc2_message, std::shared_ptr<phoenix_msgs::msg::StreamDataAdc2>());
-        auto msg = _adc2_message;
-        _tree_items.adc2.dc48v_voltage->setText(VALUE_COLUMN, QString::number(msg->dc48v_voltage, 'f', 3));
-        _tree_items.adc2.dribble_voltage->setText(VALUE_COLUMN, QString::number(msg->dribble_voltage, 'f', 3));
-        _tree_items.adc2.dribble_current->setText(VALUE_COLUMN, QString::number(msg->dribble_current, 'f', 3));
-    }
-    if (_motion_message) {
-        // auto msg = std::atomic_exchange(&_motion_message, std::shared_ptr<phoenix_msgs::msg::StreamDataMotion>());
-        auto msg = _motion_message;
-        for (int index = 0; index < 3; index++) {
-            _tree_items.motion.accelerometer[index]->setText(VALUE_COLUMN, QString::number(msg->accelerometer[index], 'f', 3));
-            _tree_items.motion.gyroscope[index]->setText(VALUE_COLUMN, QString::number(msg->gyroscope[index], 'f', 3));
-            _tree_items.motion.gravity[index]->setText(VALUE_COLUMN, QString::number(msg->gravity[index], 'f', 3));
-            _tree_items.motion.body_acceleration[index]->setText(VALUE_COLUMN, QString::number(msg->body_acceleration[index], 'f', 3));
-            _tree_items.motion.body_velocity[index]->setText(VALUE_COLUMN, QString::number(msg->body_velocity[index], 'f', 3));
-        }
-        for (int index = 0; index < 4; index++) {
-            _tree_items.motion.wheel_velocity[index]->setText(VALUE_COLUMN, QString::number(msg->wheel_velocity_meas[index], 'f', 3));
-            _tree_items.motion.wheel_current_d[index]->setText(VALUE_COLUMN, QString::number(msg->wheel_current_meas_d[index], 'f', 3));
-            _tree_items.motion.wheel_current_q[index]->setText(VALUE_COLUMN, QString::number(msg->wheel_current_meas_q[index], 'f', 3));
-        }
-        for (int index = 0; index < 4; index++) {
-            _tree_items.control.wheel_current_ref[index]->setText(VALUE_COLUMN, QString::number(msg->wheel_current_ref[index], 'f', 3));
-            _tree_items.control.body_ref_accel[index]->setText(VALUE_COLUMN, QString::number(msg->body_ref_accel[index], 'f', 3));
-        }
-        _tree_items.control.perf_counter->setText(VALUE_COLUMN, QString::number(msg->performance_counter));
+    for (auto &subscriber : _subscribers) {
+        subscriber->update();
     }
 }
 
 void TelemetryViewer::startLogging(void) {
-    QString path = QFileDialog::getSaveFileName(this, "Save Log File", "", "CSV (*.csv)");
+    /*QString path = QFileDialog::getSaveFileName(this, "Save Log File", "", "CSV (*.csv)");
     if (path.isEmpty()) {
         return;
     }
@@ -176,74 +65,206 @@ void TelemetryViewer::startLogging(void) {
         _log_file = file;
     }
     _ui->saveLogButton->setEnabled(false);
-    _ui->stopLogButton->setEnabled(true);
+    _ui->stopLogButton->setEnabled(true);*/
 }
 
 void TelemetryViewer::stopLogging(void) {
-    _log_file.reset();
+    /*_log_file.reset();
     _ui->saveLogButton->setEnabled(true);
-    _ui->stopLogButton->setEnabled(false);
+    _ui->stopLogButton->setEnabled(false);*/
 }
 
-void TelemetryViewer::generateTelemetryTreeItems(void) {
-    // batteryの内容を表示するアイテムを作成する
-    auto battery_top = new QTreeWidgetItem(_ui->telemetryTree, {"Battery"});
-    _tree_items.battery.present = new QTreeWidgetItem(battery_top, {"Battery Present"});
-    _tree_items.battery.voltage = new QTreeWidgetItem(battery_top, {"Battery Voltage", "", "V"});
-    _tree_items.battery.current = new QTreeWidgetItem(battery_top, {"Battery Current", "", "A"});
-    _tree_items.battery.temperature = new QTreeWidgetItem(battery_top, {"Board Temperature", "", u8"\u2103"});
+void TelemetryViewer::SubscriberBase::updateImpl(Field_t &parent_field, const void *ptr, const rosidl_message_type_support_t *type_support) {
+    auto members = reinterpret_cast<const rosidl_typesupport_introspection_cpp::MessageMembers *>(type_support->data);
+    size_t member_count = std::min(static_cast<size_t>(members->member_count_), parent_field.children.size());
+    for (size_t index = 0; index < member_count; index++) {
+        Field_t &child_field = parent_field.children[index];
+        const rosidl_typesupport_introspection_cpp::MessageMember *member = members->members_ + index;
+        const void *child_ptr = reinterpret_cast<const uint8_t *>(ptr) + member->offset_;
+        if (member->is_array_) {
+            if (member->array_size_ != 0) {
+                // 固定長配列
+                if (member->type_id_ != rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE) {
+                    // プリミティブ型の固定長配列
+                    size_t element_count = std::min(member->array_size_, child_field.elements.size());
+                    for (size_t array_index = 0; array_index < element_count; array_index++) {
+                        const void *value = member->get_const_function(child_ptr, array_index);
+                        updatePrimitive(child_field.elements[array_index], member->type_id_, value);
+                    }
+                }
+                else {
+                    // メッセージの固定長配列
+                    size_t element_count = std::min(member->array_size_, child_field.children.size());
+                    for (size_t array_index = 0; array_index < element_count; array_index++) {
+                        Field_t &grandchild_field = child_field.children[array_index];
+                        const void *grandchild_ptr = member->get_const_function(child_ptr, array_index);
+                        updateImpl(grandchild_field, grandchild_ptr, member->members_);
+                    }
+                }
+            }
+            else {
+                // 可変長配列は非対応
+            }
+        }
+        else {
+            // 単独
+            if (member->type_id_ != rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE) {
+                // プリミティブ型
+                updatePrimitive(child_field.item, member->type_id_, child_ptr);
+            }
+            else {
+                // メッセージ
+                updateImpl(child_field, child_ptr, member->members_);
+            }
+        }
+    }
+}
 
-    // stream_data_adc2の内容を表示するアイテムを作成する
-    auto adc2_top = new QTreeWidgetItem(_ui->telemetryTree, {"ADC2"});
-    _tree_items.adc2.dc48v_voltage = new QTreeWidgetItem(adc2_top, {"DC48V Voltage", "", "V"});
-    _tree_items.adc2.dribble_voltage = new QTreeWidgetItem(adc2_top, {"Dribble Voltage", "", "V"});
-    _tree_items.adc2.dribble_current = new QTreeWidgetItem(adc2_top, {"Dribble Current", "", "A"});
+void TelemetryViewer::SubscriberBase::updatePrimitive(QTreeWidgetItem *item, uint8_t type, const void *ptr) {
+    static const QString true_text("true");
+    static const QString false_text("false");
+    switch (type) {
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_FLOAT:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const float *>(ptr)));
+        break;
 
-    // stream_data_motionの内容を表示するアイテムを作成する
-    auto motion_top = new QTreeWidgetItem(_ui->telemetryTree, {"Motion"});
-    _tree_items.motion.accelerometer[0] = new QTreeWidgetItem(motion_top, {"Accelerometer X", "", u8"m/s\u00B2"});
-    _tree_items.motion.accelerometer[1] = new QTreeWidgetItem(motion_top, {"Accelerometer Y", "", u8"m/s\u00B2"});
-    _tree_items.motion.accelerometer[2] = new QTreeWidgetItem(motion_top, {"Accelerometer Z", "", u8"m/s\u00B2"});
-    _tree_items.motion.gyroscope[0] = new QTreeWidgetItem(motion_top, {"Gyroscope X", "", "rad/s"});
-    _tree_items.motion.gyroscope[1] = new QTreeWidgetItem(motion_top, {"Gyroscope Y", "", "rad/s"});
-    _tree_items.motion.gyroscope[2] = new QTreeWidgetItem(motion_top, {"Gyroscope Z", "", "rad/s"});
-    _tree_items.motion.gravity[0] = new QTreeWidgetItem(motion_top, {"Gravity X", "", u8"m/s\u00B2"});
-    _tree_items.motion.gravity[1] = new QTreeWidgetItem(motion_top, {"Gravity Y", "", u8"m/s\u00B2"});
-    _tree_items.motion.gravity[2] = new QTreeWidgetItem(motion_top, {"Gravity Z", "", u8"m/s\u00B2"});
-    _tree_items.motion.body_acceleration[0] = new QTreeWidgetItem(motion_top, {"Body Acceleration X", "", u8"m/s\u00B2"});
-    _tree_items.motion.body_acceleration[1] = new QTreeWidgetItem(motion_top, {"Body Acceleration Y", "", u8"m/s\u00B2"});
-    _tree_items.motion.body_acceleration[2] = new QTreeWidgetItem(motion_top, {"Body Acceleration Z", "", u8"m/s\u00B2"});
-    _tree_items.motion.body_velocity[0] = new QTreeWidgetItem(motion_top, {"Body Velocity X", "", "m/s"});
-    _tree_items.motion.body_velocity[1] = new QTreeWidgetItem(motion_top, {"Body Velocity Y", "", "m/s"});
-    _tree_items.motion.body_velocity[2] = new QTreeWidgetItem(motion_top, {u8"Body Velocity \u03C9", "", "rad/s"});
-    _tree_items.motion.wheel_velocity[0] = new QTreeWidgetItem(motion_top, {"Wheel 1 Velocity", "", "m/s"});
-    _tree_items.motion.wheel_velocity[1] = new QTreeWidgetItem(motion_top, {"Wheel 2 Velocity", "", "m/s"});
-    _tree_items.motion.wheel_velocity[2] = new QTreeWidgetItem(motion_top, {"Wheel 3 Velocity", "", "m/s"});
-    _tree_items.motion.wheel_velocity[3] = new QTreeWidgetItem(motion_top, {"Wheel 4 Velocity", "", "m/s"});
-    _tree_items.motion.wheel_current_d[0] = new QTreeWidgetItem(motion_top, {"Wheel 1 Current D", "", "A"});
-    _tree_items.motion.wheel_current_q[0] = new QTreeWidgetItem(motion_top, {"Wheel 1 Current Q", "", "A"});
-    _tree_items.motion.wheel_current_d[1] = new QTreeWidgetItem(motion_top, {"Wheel 2 Current D", "", "A"});
-    _tree_items.motion.wheel_current_q[1] = new QTreeWidgetItem(motion_top, {"Wheel 2 Current Q", "", "A"});
-    _tree_items.motion.wheel_current_d[2] = new QTreeWidgetItem(motion_top, {"Wheel 3 Current D", "", "A"});
-    _tree_items.motion.wheel_current_q[2] = new QTreeWidgetItem(motion_top, {"Wheel 3 Current Q", "", "A"});
-    _tree_items.motion.wheel_current_d[3] = new QTreeWidgetItem(motion_top, {"Wheel 4 Current D", "", "A"});
-    _tree_items.motion.wheel_current_q[3] = new QTreeWidgetItem(motion_top, {"Wheel 4 Current Q", "", "A"});
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_DOUBLE:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const double *>(ptr)));
+        break;
 
-    // stream_data_controlの内容を表示するアイテムを作成する
-    auto control_top = new QTreeWidgetItem(_ui->telemetryTree, {"Control"});
-    _tree_items.control.perf_counter = new QTreeWidgetItem(control_top, {"Performance Counter", "", "Cycles"});
-    _tree_items.control.wheel_current_ref[0] = new QTreeWidgetItem(control_top, {"Wheel 1 Current Ref", "", "A"});
-    _tree_items.control.wheel_current_ref[1] = new QTreeWidgetItem(control_top, {"Wheel 2 Current Ref", "", "A"});
-    _tree_items.control.wheel_current_ref[2] = new QTreeWidgetItem(control_top, {"Wheel 3 Current Ref", "", "A"});
-    _tree_items.control.wheel_current_ref[3] = new QTreeWidgetItem(control_top, {"Wheel 4 Current Ref", "", "A"});
-    _tree_items.control.body_ref_accel[0] = new QTreeWidgetItem(control_top, {"Ref Acceleration X", "", u8"m/s\u00B2"});
-    _tree_items.control.body_ref_accel[1] = new QTreeWidgetItem(control_top, {"Ref Acceleration Y", "", u8"m/s\u00B2"});
-    _tree_items.control.body_ref_accel[2] = new QTreeWidgetItem(control_top, {u8"Ref Acceleration \u03C9", "", u8"rad/s\u00B2"});
-    _tree_items.control.body_ref_accel[3] = new QTreeWidgetItem(control_top, {"Ref Acceleration C", "", u8"m/s\u00B2"});
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_CHAR:
+        item->setText(VALUE_COLUMN, QChar(*reinterpret_cast<const char *>(ptr)));
+        break;
 
-    // カラム幅を文字に合わせてリサイズする
-    _ui->telemetryTree->expandAll();
-    _ui->telemetryTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    _ui->telemetryTree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
-    _ui->telemetryTree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_WCHAR:
+        item->setText(VALUE_COLUMN, QChar(*reinterpret_cast<const wchar_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_BOOLEAN:
+        item->setText(VALUE_COLUMN, *reinterpret_cast<const bool *>(ptr) ? true_text : false_text);
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_OCTET:
+        [[fallthrough]];
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_UINT8:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const uint8_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_INT8:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const int8_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_UINT16:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const uint16_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_INT16:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const int16_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_UINT32:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const uint32_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_INT32:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const int32_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_UINT64:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const uint64_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_INT64:
+        item->setText(VALUE_COLUMN, QString::number(*reinterpret_cast<const int64_t *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_STRING:
+        item->setText(VALUE_COLUMN, QString::fromStdString(*reinterpret_cast<const std::string *>(ptr)));
+        break;
+
+    case rosidl_typesupport_introspection_cpp::ROS_TYPE_WSTRING:
+        item->setText(VALUE_COLUMN, QString::fromStdWString(*reinterpret_cast<const std::wstring *>(ptr)));
+        break;
+
+    default:
+        item->setText(VALUE_COLUMN, QString());
+        break;
+    }
+}
+
+void TelemetryViewer::addSubscriptionImpl(const std::string &topic_name, std::shared_ptr<SubscriberBase> subscriber) {
+    // ツリーにトップレベルアイテムを作成する
+    // qDebug("QTreeWidgetItem(%s)", topic_name.c_str());
+    subscriber->top.item = new QTreeWidgetItem(_ui->telemetryTree, {QString::fromStdString(topic_name)});
+    subscriber->top.item->setExpanded(true);
+
+    // ツリーに各フィールドの項目を作成する
+    // auto typesupport = subscriber->handle();
+    // Field_t &parent = subscriber->top;
+    // std::string base_name("");
+
+    createTreeItems(subscriber->top, "", subscriber->handle());
+
+    _subscribers.push_back(subscriber);
+}
+
+void TelemetryViewer::createTreeItems(Field_t &parent_field, const QString &base_name, const rosidl_message_type_support_t *type_support) {
+    auto members = reinterpret_cast<const rosidl_typesupport_introspection_cpp::MessageMembers *>(type_support->data);
+    // qDebug("members = %p", members);
+    // qDebug("members.namespace = '%s'", members->message_namespace_);
+    // qDebug("members.name = '%s'", members->message_name_);
+    // qDebug("members.count = %u", members->member_count_);
+
+    // qDebug("members : ns = %p, name = %p, count = %p", members->message_namespace_, members->message_name_, &members->member_count_);
+    size_t member_count = members->member_count_;
+    parent_field.children.resize(member_count);
+    for (size_t index = 0; index < member_count; index++) {
+        Field_t &child_field = parent_field.children[index];
+        const rosidl_typesupport_introspection_cpp::MessageMember *member = members->members_ + index;
+        // qDebug("member[%zu] : name = %s, type = %d, is_array = %d, size = %zu", index, member->name_, member->type_id_, member->is_array_,
+        // member->array_size_);
+        QString field_name = member->name_;
+        if (member->is_array_) {
+            if (member->array_size_ != 0) {
+                // 固定長配列
+                size_t element_count = std::min(member->array_size_, MAX_ARRAY_ELEMENTS);
+                if (member->type_id_ != rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE) {
+                    // プリミティブ型の固定長配列
+                    child_field.elements.resize(element_count);
+                    for (size_t array_index = 0; array_index < element_count; array_index++) {
+                        QString text = QString("%1%2[%3]").arg(base_name).arg(field_name).arg(array_index);
+                        // qDebug("QTreeWidgetItem(%s)", text.toStdString().c_str());
+                        child_field.elements[array_index] = new QTreeWidgetItem(parent_field.item, {text});
+                    }
+                }
+                else {
+                    // メッセージの固定長配列
+                    child_field.children.resize(element_count);
+                    for (size_t array_index = 0; array_index < element_count; array_index++) {
+                        QString text = QString("%1%2[%3]").arg(base_name).arg(field_name).arg(array_index);
+                        // qDebug("QTreeWidgetItem(%s)", text.toStdString().c_str());
+                        child_field.children[array_index].item = new QTreeWidgetItem(parent_field.item, {text});
+                        child_field.children[array_index].item->setExpanded(true);
+                        text.append('.');
+                        createTreeItems(child_field.children[array_index], text, member->members_);
+                    }
+                }
+            }
+            else {
+                // 可変長配列は非対応
+            }
+        }
+        else {
+            // 単独
+            QString text = QString("%1%2").arg(base_name).arg(field_name);
+            // qDebug("QTreeWidgetItem(%s)", text.toStdString().c_str());
+            child_field.item = new QTreeWidgetItem(parent_field.item, {text});
+            if (member->type_id_ == rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE) {
+                // メッセージ
+                child_field.item->setExpanded(true);
+                text.append('.');
+                createTreeItems(child_field, text, member->members_);
+            }
+        }
+    }
 }
