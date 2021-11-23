@@ -5,7 +5,6 @@
 #include "node_thread.hpp"
 #include <QtWidgets/QMainWindow>
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/twist.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 class Ui_MainWindow;
@@ -37,8 +36,6 @@ private:
 
     Q_SIGNAL void updateRequest(void);
 
-    Q_SLOT void sendCommand(void);
-
     /**
      * @brief ROS2ノードを作成する
      * @return 作成したノード
@@ -56,18 +53,10 @@ private:
     /// ノードの処理を行うスレッド
     NodeThread *_NodeThread = nullptr;
 
-    /// 接続中のノードの属する名前空間
-    std::string _namespace;
-
     // 作成したSubscriptionを保持する
     struct Subscriptions_t {
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image;
     } _Subscribers;
-
-    /// 作成したPublisherを保持する
-    struct Publisher_t {
-        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocity;
-    } _publishers;
 
     /// GUIのノード名の頭に付ける文字列
     static constexpr char GUI_NODE_NAME_PREFIX[] = "phoenix_gui_";

@@ -24,6 +24,8 @@ public:
 
     virtual ~GamepadThread();
 
+    static bool isSupported(void);
+
     std::shared_ptr<InputState> inputState(int device_id);
 
     Q_SLOT void vibrate(int device_id, float power);

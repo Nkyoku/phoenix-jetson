@@ -233,7 +233,7 @@
              </widget>
             </item>
             <item>
-             <widget class="ControllerControls" name="controllerGroup">
+             <widget class="ControlPad" name="controllerGroup">
               <property name="title">
                <string>Controller</string>
               </property>
@@ -259,9 +259,9 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>ControllerControls</class>
+   <class>ControlPad</class>
    <extends>QGroupBox</extends>
-   <header>controller.hpp</header>
+   <header>control_pad.hpp</header>
    <container>1</container>
   </customwidget>
   <customwidget>

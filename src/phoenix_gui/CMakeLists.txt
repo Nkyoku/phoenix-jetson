@@ -41,7 +41,8 @@ ament_auto_add_executable(gui
   src/node_thread.cpp
   src/image_viewer.cpp
   src/gamepad_thread.cpp
-  src/controller.cpp
+  src/control_pad.cpp
+  src/control_pad_scene.cpp
   src/parameter_editor.cpp
   src/diagnostics_viewer.cpp
   src/telemetry_viewer.cpp

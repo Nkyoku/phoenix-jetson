@@ -1,16 +1,28 @@
 ﻿#include "gamepad_thread.hpp"
+
+#ifdef _MSC_VER
+#define ENABLE_GAMEPAD_SUPPORT 1
+#else
+#define ENABLE_GAMEPAD_SUPPORT 0
+#endif
+
+#if ENABLE_GAMEPAD_SUPPORT
 #include <Windows.h>
 #include <Xinput.h>
 #include <string.h>
 #undef min
 #undef max
 #include <algorithm>
-
 #pragma comment(lib, "xinput.lib")
+#endif
 
 GamepadThread::GamepadThread(QObject *parent) : QThread(parent) {}
 
 GamepadThread::~GamepadThread() {}
+
+bool GamepadThread::isSupported(void) {
+    return ENABLE_GAMEPAD_SUPPORT;
+}
 
 std::shared_ptr<GamepadThread::InputState> GamepadThread::inputState(int device_id) {
     if ((0 <= device_id) && (device_id <= MAX_DEVICE_COUNT)) {
@@ -26,6 +38,7 @@ void GamepadThread::vibrate(int device_id, float power) {
 }
 
 void GamepadThread::run(void) {
+#if ENABLE_GAMEPAD_SUPPORT
     while (!isInterruptionRequested()) {
         for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
             XINPUT_STATE state;
@@ -75,6 +88,7 @@ void GamepadThread::run(void) {
         }
         msleep(10);
     }
+#endif
 }
 
 void GamepadThread::applyTriggerDeadZone(float &value, float dead_zone) {

@@ -41,7 +41,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(_Ui->scanButton, &QPushButton::clicked, this, &MainWindow::reloadNamespaceList);
     connect(_Ui->namespaceComboBox, &QComboBox::currentTextChanged, this, &MainWindow::connectToNodes);
     connect(this, &MainWindow::updateRequest, _image_viewer, qOverload<>(&ImageViewerWidget::update), Qt::QueuedConnection);
-    connect(_Ui->controllerGroup, &ControllerControls::commandReady, this, &MainWindow::sendCommand);
 
     // リストを更新する
     reloadNamespaceList();
@@ -125,38 +124,30 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
     quitNodeThread();
 
     if (namespace_name.isEmpty()) {
-        _namespace.clear();
-
         // 画面を初期化する
         _image_viewer->setImage(nullptr);
         emit updateRequest();
         return;
     }
-    _namespace = namespace_name.toStdString();
-
-    // '/'を付与する
-    std::string prefix = _namespace;
-    if (prefix.back() != '/') {
-        prefix += '/';
-    }
+    std::string ns = namespace_name.toStdString();
 
     // ノードとスレッドを作成する
     _NodeThread = new NodeThread(this, createNode());
     auto &node = _NodeThread->node();
     connect(_NodeThread, &NodeThread::finished, _NodeThread, &QObject::deleteLater);
 
-
     // 各UI部品のノードの機能を初期化する
-    _Ui->diagnosticsViewer->initializeNode(node, _namespace);
-    _Ui->systemGroup->initializeNode(node, _namespace);
+    _Ui->diagnosticsViewer->initializeNode(node, ns);
+    _Ui->systemGroup->initializeNode(node, ns);
+    _Ui->controllerGroup->initializeNode(node, ns);
 
     // センサーデータをサブスクライブするときのQoSの設定
     const rclcpp::SensorDataQoS qos_sensor;
 
     // テレメトリとして表示するトピックをサブスクライブする
-    _Ui->telemetryViewer->addSubscription<sensor_msgs::msg::BatteryState>(node, constructName(_namespace, phoenix::TOPIC_NAME_BATTERY), qos_sensor);
-    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataAdc2>(node, constructName(_namespace, phoenix::TOPIC_NAME_ADC2), qos_sensor);
-    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataMotion>(node, constructName(_namespace, phoenix::TOPIC_NAME_MOTION), qos_sensor);
+    _Ui->telemetryViewer->addSubscription<sensor_msgs::msg::BatteryState>(node, constructName(ns, phoenix::TOPIC_NAME_BATTERY), qos_sensor);
+    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataAdc2>(node, constructName(ns, phoenix::TOPIC_NAME_ADC2), qos_sensor);
+    _Ui->telemetryViewer->addSubscription<phoenix_msgs::msg::StreamDataMotion>(node, constructName(ns, phoenix::TOPIC_NAME_MOTION), qos_sensor);
 
     // imageトピックを受信するSubscriptionを作成する
     _Subscribers.image =
@@ -165,14 +156,11 @@ void MainWindow::connectToNodes(const QString &namespace_name) {
             emit updateRequest();
         });
 
-    // cmd_velトピックを配信するPublisherを作成する
-    _publishers.velocity = node->create_publisher<geometry_msgs::msg::Twist>(prefix + phoenix::TOPIC_NAME_COMMAND_VELOCITY, 1);
-
     // スレッドを実行
     _NodeThread->start();
 
     // パラメータの一覧をツリーに表示する
-    _Ui->parameterGroup->addParameters(node, constructName(_namespace, phoenix::command::NODE_NAME));
+    _Ui->parameterGroup->addParameters(node, constructName(ns, phoenix::command::NODE_NAME));
     //_Ui->parameterGroup->addParameters(node, constructName(_namespace, phoenix::stream::NODE_NAME));
 }
 
@@ -181,14 +169,12 @@ void MainWindow::quitNodeThread(void) {
         // Subscriptionを破棄する
         _Subscribers.image.reset();
 
-        // Publisherを破棄する
-        _publishers.velocity.reset();
-
         // 各UI部品が受け持つノードの機能を終了する
         _Ui->diagnosticsViewer->uninitializeNode();
         _Ui->telemetryViewer->uninitializeNode();
         _Ui->systemGroup->uninitializeNode();
         _Ui->parameterGroup->uninitializeNode();
+        _Ui->controllerGroup->uninitializeNode();
 
         // スレッドを終了する
         // deleteはdeleteLater()スロットにより行われるのでここでする必要はない
@@ -196,13 +182,6 @@ void MainWindow::quitNodeThread(void) {
         _NodeThread->quit();
         _NodeThread->wait(NodeThread::QUIT_TIMEOUT);
         _NodeThread = nullptr;
-    }
-}
-
-void MainWindow::sendCommand(void) {
-    if (_publishers.velocity) {
-        geometry_msgs::msg::Twist msg = _Ui->controllerGroup->targetVelocity();
-        _publishers.velocity->publish(msg);
     }
 }
 
