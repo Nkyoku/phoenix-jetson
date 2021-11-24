@@ -4,6 +4,8 @@
 #include "../../phoenix/include/phoenix.hpp"
 #include "node_thread.hpp"
 #include "control_pad_scene.hpp"
+#include <math.h>
+#include <algorithm>
 
 ControlPad::ControlPad(QWidget *parent) : QGroupBox(parent) {
     // UIを生成する
@@ -16,15 +18,23 @@ ControlPad::ControlPad(QWidget *parent) : QGroupBox(parent) {
     //_ui->padGraphics->viewport()->grabGesture(Qt::PinchGesture);
     _scene = new ControlPadScene(this);
     _ui->padGraphics->setScene(_scene);
-    _scene->setup(10.0, 10.0, 10, 10);
+    _scene->setup(MAX_TRANSLATION, MAX_TRANSLATION, (int)MAX_TRANSLATION, (int)MAX_TRANSLATION);
     connect(this, &QGroupBox::toggled, [this](bool on) {
         _scene->setEnabled(on);
     });
     connect(_scene, &ControlPadScene::mouseUpdated, [this](double vx, double vy, double omega) {
-        _scene->drawTrajectory(vx, vy, omega);
+        _is_mouse_enabled = true;
+        _mouse_command = limitInput(vx, vy, omega);
+        if (!_is_gamepad_enabled) {
+            _scene->drawTrajectory(vx, vy, omega);
+        }
     });
     connect(_scene, &ControlPadScene::mouseStopped, [this](void) {
-        _scene->clearTrajectory();
+        _is_mouse_enabled = false;
+        _mouse_command = limitInput(0.0, 0.0, 0.0);
+        if (!_is_gamepad_enabled) {
+            _scene->clearTrajectory();
+        }
     });
 
     // グループボックスのチェックボックスが変更されたときに送信タイマーの作成・削除を行う
@@ -37,15 +47,31 @@ ControlPad::ControlPad(QWidget *parent) : QGroupBox(parent) {
         else if (!on && (_timer != nullptr)) {
             delete _timer;
             _timer = nullptr;
-            transmitCommand();
+            _is_mouse_enabled = false;
+            _is_gamepad_enabled = false;
+            _scene->clearTrajectory();
+            if (GamepadThread::isSupported()) {
+                _ui->gamepadCombobox->setCurrentIndex(0);
+            }
         }
     });
-
-    // connect(this, &ControlPad::commandReady, this, &ControlPad::sendCommand);
 
     // ホイールを回したときの回転速度の感度の設定値を反映するようにする
     connect(_ui->sensitivitySlider, &QSlider::valueChanged, [this](int value) {
         _scene->setWheelSensitivity(value);
+    });
+
+    // 緊急停止ボタンが押されたら車体の制御を停止させるコマンドを送信し、
+    // このコンポーネントのチェックを外してコマンド送信を停止する
+    connect(_ui->stopButton, &QPushButton::clicked, [this](void) {
+        if (_velocity_publisher) {
+            geometry_msgs::msg::Twist msg;
+            msg.linear.x = std::numeric_limits<double>::quiet_NaN();
+            msg.linear.y = std::numeric_limits<double>::quiet_NaN();
+            msg.angular.z = std::numeric_limits<double>::quiet_NaN();
+            _velocity_publisher->publish(msg);
+        }
+        setChecked(false);
     });
 
     if (GamepadThread::isSupported()) {
@@ -92,7 +118,6 @@ ControlPad::~ControlPad() {
         _gamepad_thread->wait(NodeThread::QUIT_TIMEOUT);
         _gamepad_thread = nullptr;
     }
-    delete _graphcis;
 }
 
 void ControlPad::initializeNode(rclcpp::Node::SharedPtr node, const std::string &remote_node_namespace) {
@@ -100,11 +125,31 @@ void ControlPad::initializeNode(rclcpp::Node::SharedPtr node, const std::string 
     _velocity_publisher = node->create_publisher<geometry_msgs::msg::Twist>(constructName(remote_node_namespace, phoenix::TOPIC_NAME_COMMAND_VELOCITY), qos);
 }
 
-void ControlPad::uninitializeNode(void) {}
+void ControlPad::uninitializeNode(void) {
+    _velocity_publisher.reset();
+}
+
+ControlPad::Command_t ControlPad::limitInput(double vx, double vy, double omega) {
+    Command_t result;
+    double v = sqrt(vx * vx + vy * vy);
+    if (v <= MAX_TRANSLATION) {
+        result.vx = vx;
+        result.vy = vy;
+    }
+    else {
+        result.vx = vx / v * MAX_TRANSLATION;
+        result.vy = vy / v * MAX_TRANSLATION;
+    }
+    result.omega = std::min(std::max(omega, -MAX_ROTATION), MAX_ROTATION);
+    return result;
+}
 
 bool ControlPad::eventFilter(QObject *obj, QEvent *event) {
     const QWidget *viewport = _ui->padGraphics->viewport();
     if (obj == viewport) {
+        if (event->type() == QEvent::Resize) {
+            _scene->resizeContent(viewport->width(), viewport->height());
+        }
         /*if (event->type() == QEvent::Gesture) {
             QGestureEvent *gesture_event = static_cast<QGestureEvent *>(event);
             if (QGesture *gesture = gesture_event->gesture(Qt::PanGesture)) {
@@ -137,9 +182,6 @@ bool ControlPad::eventFilter(QObject *obj, QEvent *event) {
             return true;
         }
         else */
-        if (event->type() == QEvent::Resize) {
-            _scene->resizeContent(viewport->width(), viewport->height());
-        }
     }
     return false;
 }
@@ -148,20 +190,42 @@ void ControlPad::transmitCommand(void) {
     bool gamepad_selected;
     int gamepad_device_id = _ui->gamepadCombobox->currentData().toInt(&gamepad_selected);
     if (gamepad_selected) {
+        // ゲームパッドの入力値を送信する
+        _is_gamepad_enabled = true;
         auto input_state = _gamepad_thread->inputState(gamepad_device_id);
         if (input_state) {
-            _target_velocity.linear.x = 4.0f * input_state->left_stick_x;
-            _target_velocity.linear.y = 4.0f * input_state->left_stick_y;
-            _target_velocity.linear.z = -input_state->right_trigger;
-            _target_velocity.angular.z = -10.0f * input_state->right_stick_x;
-            // emit commandReady();
+            geometry_msgs::msg::Twist msg;
+            double sensitivity = (double)_ui->sensitivitySlider->value() / _ui->sensitivitySlider->maximum();
+            msg.linear.x = sensitivity * MAX_TRANSLATION * input_state->left_stick_x;
+            msg.linear.y = sensitivity * MAX_TRANSLATION * input_state->left_stick_y;
+            msg.linear.z = -input_state->right_trigger;
+            msg.angular.z = -sensitivity * MAX_ROTATION * input_state->right_stick_x;
+            if (_velocity_publisher) {
+                _velocity_publisher->publish(msg);
+            }
+            _scene->drawTrajectory(msg.linear.x, msg.linear.y, msg.angular.z);
+            return;
+        }
+    }
+    else if (_is_mouse_enabled) {
+        // マウスの入力を送信する
+        geometry_msgs::msg::Twist msg;
+        msg.linear.x = _mouse_command.vx;
+        msg.linear.y = _mouse_command.vy;
+        msg.linear.z = 0.0;
+        msg.angular.z = _mouse_command.omega;
+        if (_velocity_publisher) {
+            _velocity_publisher->publish(msg);
+        }
+        if (_is_gamepad_enabled) {
+            _is_gamepad_enabled = false;
+            _scene->drawTrajectory(msg.linear.x, msg.linear.y, msg.angular.z);
+        }
+    }
+    else {
+        if (_is_gamepad_enabled) {
+            _is_gamepad_enabled = false;
+            _scene->clearTrajectory();
         }
     }
 }
-
-/*void ControlPad::sendCommand(void) {
-    if (_publishers.velocity) {
-        geometry_msgs::msg::Twist msg = _Ui->controllerGroup->targetVelocity();
-        _publishers.velocity->publish(msg);
-    }
-}*/

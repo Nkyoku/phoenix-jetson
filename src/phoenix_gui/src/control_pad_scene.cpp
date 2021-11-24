@@ -38,10 +38,6 @@ void ControlPadScene::setup(double max_x_value, double max_y_value, int x_tick_c
     _trajectory_line->setVisible(false);
     _trajectory_arc = addPath(QPainterPath(), QPen(Qt::red, 3));
     _trajectory_arc->setVisible(false);
-    _trajectory_line_a = addLine(0, 0, 0, 0, QPen(Qt::red));
-    _trajectory_line_b = addLine(0, 0, 0, 0, QPen(Qt::red));
-    _trajectory_line_a->setVisible(false);
-    _trajectory_line_b->setVisible(false);
 
     // 車体を作成する
     addEllipse(-CIRCLE_RADIUS, -CIRCLE_RADIUS, 2 * CIRCLE_RADIUS, 2 * CIRCLE_RADIUS, QPen(Qt::black));
@@ -107,11 +103,7 @@ void ControlPadScene::drawTrajectory(double vx, double vy, double omega) {
     double scale_x = w * _x_tick_count / ((_x_tick_count + 1) * _max_x_value);
     double scale_y = w * _y_tick_count / ((_y_tick_count + 1) * _max_y_value);
 
-    // double x = _pos.x() / w * _max_x_value * (_x_tick_count + 1) / _x_tick_count;
-    // double y = -_pos.y() / w * _max_y_value * (_y_tick_count + 1) / _y_tick_count;
-
     double v = sqrt(vx * vx + vy * vy);
-    // double omega = _wheel / 120.0 * _wheel_sensitivity;
 
     // 速度ベクトルを描画する
     _trajectory_line->setLine(0, 0, scale_x * vx, -scale_y * vy);
@@ -142,69 +134,16 @@ void ControlPadScene::drawTrajectory(double vx, double vy, double omega) {
         QPainterPath path;
         path.arcTo(rect, start_angle, span_angle);
         _trajectory_arc->setPath(path);
-        _trajectory_line_a->setLine(0, 0, scale_x * cx, -scale_y * cy);
-        _trajectory_line_b->setLine(scale_x * vx, -scale_y * vy, scale_x * cx, -scale_y * cy);
-
-
-        /*double l = sqrt(r * r - v * v * 0.25);
-        if (!isfinite(l)) {
-            l = 0.0;
-            r = v * 0.5;
-            omega = (0 < _wheel) ? (v / r) : (-v / r);
-        }
-        double cx = x * 0.5;
-        double cy = y * 0.5;
-        if (0 < _wheel) {
-            cx -= y / v * l;
-            cy += x / v * l;
-        }
-        else {
-            cx += y / v * l;
-            cy -= x / v * l;
-        }
-
-        // 弧の位置と角度を計算し描画する
-        QRect rect(scale_x * (cx - r), scale_y * (-cy - r), scale_x * 2.0 * r, scale_y * 2.0 * r);
-        double start_angle = atan2(cy, cx) / PI * 180 - 180;
-        double span_angle = acos(l / r) / PI * 360;
-        if (_wheel < 0) {
-            span_angle = -span_angle;
-        }
-        QPainterPath path;
-        path.arcTo(rect, start_angle, span_angle);
-        _trajectory_arc->setPath(path);
-
-        // 弧の回転中心へ伸びる線分を描画する
-        _trajectory_line_a->setLine(0, 0, scale_x * cx, -scale_y * cy);
-        _trajectory_line_b->setLine(scale_x * vx, -scale_y * vy, scale_x * cx, -scale_y * cy);
-
-        // 接線ベクトルを速度ベクトルとする
-        double clen = sqrt(cx * cx + cy * cy);
-        if (0 < _wheel) {
-            _translation_x = v * cy / clen;
-            _translation_y = -v * cx / clen;
-        }
-        else {
-            _translation_x = -v * cy / clen;
-            _translation_y = v * cx / clen;
-        }*/
-
         _trajectory_arc->setVisible(true);
-        _trajectory_line_a->setVisible(true);
-        _trajectory_line_b->setVisible(true);
     }
     else {
         _trajectory_arc->setVisible(false);
-        _trajectory_line_a->setVisible(false);
-        _trajectory_line_b->setVisible(false);
     }
 }
 
 void ControlPadScene::clearTrajectory(void) {
     _trajectory_line->setVisible(false);
     _trajectory_arc->setVisible(false);
-    _trajectory_line_a->setVisible(false);
-    _trajectory_line_b->setVisible(false);
 }
 
 void ControlPadScene::resizeContent(int viewport_width, int viewport_height) {
@@ -301,6 +240,10 @@ void ControlPadScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouse_event) {
             emit mouseStopped();
         }
     }
+}
+
+void ControlPadScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *mouse_event) {
+    mousePressEvent(mouse_event);
 }
 
 void ControlPadScene::wheelEvent(QGraphicsSceneWheelEvent *wheel_event) {

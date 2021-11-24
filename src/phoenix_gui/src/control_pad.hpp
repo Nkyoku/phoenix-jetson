@@ -5,11 +5,11 @@
 #include <QtCore/QTimer>
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <QtCore/QTimer>
 
 struct ControllerCommand {};
 
 class Ui_ControlPad;
-struct Graphics_ControlPad;
 class ControlPadScene;
 
 class ControlPad : public QGroupBox {
@@ -32,23 +32,27 @@ public:
      */
     void uninitializeNode(void);
 
-    /**
-     * @brief 指令速度を取得する
-     * @return 指令速度
-
-    const geometry_msgs::msg::Twist &targetVelocity(void) const {
-        return _target_velocity;
-    } */
-
-    // Q_SLOT void setPoseDisplay(const geometry_msgs::msg::Twist &twist, const geometry_msgs::msg::Pose &pose);
-
-    // Q_SIGNAL void commandReady(void);
-
 private:
+    struct Command_t {
+        double vx = 0.0;
+        double vy = 0.0;
+        double omega = 0.0;
+    };
+
+    /**
+     * @brief 入力を制限する
+     * @param vx 並進速度のX成分
+     * @param vy 並進速度のY成分
+     * @param omega 角速度
+     * @return 制限された入力値
+     */
+    static Command_t limitInput(double vx, double vy, double omega);
+
     virtual bool eventFilter(QObject *obj, QEvent *event) override;
 
-    // Q_SLOT void connectToGamepad(int index);
-
+    /**
+     * @brief 速度指令を送る
+     */
     Q_SLOT void transmitCommand(void);
 
     /// Qt Designerで作成したUI
@@ -63,21 +67,20 @@ private:
     /// 指令値の送信タイマー
     QTimer *_timer = nullptr;
 
-    /// 指令速度
-    geometry_msgs::msg::Twist _target_velocity;
-
-    /// パッド上に表示するグラフィックオブジェクト
-    Graphics_ControlPad *_graphcis = nullptr;
-
-    struct {
-        double velocity_scale_x;     // -1.0 ~ +1.0
-        double velocity_scale_y;     // -1.0 ~ +1.0
-        double velocity_scale_omega; // degree
-    } _pad;
-
     /// パッドに配置するシーン
     ControlPadScene *_scene;
 
-    /// 指令値の送信間隔[ms]
-    static constexpr int TRANSMIT_PERIOD = 50;
+    /// 送信する値
+    bool _is_mouse_enabled = false;
+    bool _is_gamepad_enabled = false;
+    Command_t _mouse_command;
+
+    /// 指令値の送信間隔 [ms]
+    static constexpr int TRANSMIT_PERIOD = 20;
+
+    /// 最大並進速度 [m/s]
+    static constexpr double MAX_TRANSLATION = 10.0;
+
+    /// 最大角速度 [rad/s]
+    static constexpr double MAX_ROTATION = 10.0;
 };

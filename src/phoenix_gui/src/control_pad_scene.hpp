@@ -35,6 +35,7 @@ protected:
     void mouseMoveEvent(QGraphicsSceneMouseEvent *mouse_event) override;
     void mousePressEvent(QGraphicsSceneMouseEvent *mouse_event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *mouse_event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *mouse_event) override;
     void wheelEvent(QGraphicsSceneWheelEvent *wheel_event) override;
 
 private:
@@ -55,8 +56,6 @@ private:
     QGraphicsEllipseItem *_circle;
     QGraphicsLineItem *_trajectory_line;
     QGraphicsPathItem *_trajectory_arc;
-    QGraphicsLineItem *_trajectory_line_a;
-    QGraphicsLineItem *_trajectory_line_b;
 
     int _wheel_integrator = 0;
     int _wheel = 0;

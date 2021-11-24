@@ -106,7 +106,7 @@ Emergency Stop
        <item>
         <widget class="QLabel" name="label_3">
          <property name="text">
-          <string>Wheel Sensitivity :</string>
+          <string>Wheel &amp; Gamepad Sensitivity :</string>
          </property>
         </widget>
        </item>
@@ -116,7 +116,7 @@ Emergency Stop
           <number>1</number>
          </property>
          <property name="maximum">
-          <number>4</number>
+          <number>3</number>
          </property>
          <property name="pageStep">
           <number>1</number>
